@@ -67,28 +67,22 @@
               <td>{{ stock.market }}</td>
               <td>{{ stock.quantity }}</td>
               <td>{{ formatPrice(stock.cost) }}</td>
-              <td :class="getPriceClass(stockPrices[stock.symbol]?.change)">
+              <td :class="getPriceClass(getStockChange(stock))">
                 {{
-                  stockPrices[stock.symbol]
-                    ? formatPrice(stockPrices[stock.symbol].price)
+                  getStockPrice(stock)
+                    ? formatPrice(getStockPrice(stock))
                     : '載入中...'
                 }}
               </td>
               <td>
                 {{
-                  stockPrices[stock.symbol]
-                    ? formatMoney(
-                        stock.quantity * stockPrices[stock.symbol].price,
-                      )
+                  getStockPrice(stock)
+                    ? formatMoney(stock.quantity * getStockPrice(stock))
                     : '載入中...'
                 }}
               </td>
-              <td
-                :class="
-                  getStockProfitClass(stock, stockPrices[stock.symbol]?.price)
-                "
-              >
-                {{ getStockProfit(stock, stockPrices[stock.symbol]?.price) }}
+              <td :class="getStockProfitClass(stock, getStockPrice(stock))">
+                {{ getStockProfit(stock, getStockPrice(stock)) }}
               </td>
               <td>
                 <div class="flex space-x-2">
@@ -262,7 +256,7 @@ const totalCost = computed(() => {
 
 const totalValue = computed(() => {
   return stocks.value.reduce((total, stock) => {
-    const price = stockPrices.value[stock.symbol]?.price || 0;
+    const price = getStockPrice(stock);
     return total + price * stock.quantity;
   }, 0);
 });
@@ -396,6 +390,38 @@ const formatMoney = (amount) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
+};
+
+// 從價格對象中獲取股票價格的幫助函數
+const getStockPrice = (stock) => {
+  // 嘗試使用不同的可能的鍵來獲取價格數據
+  const priceData =
+    stockPrices.value[stock.symbol] ||
+    stockPrices.value[`${stock.symbol}.TW`] ||
+    Object.values(stockPrices.value).find(
+      (p) =>
+        p.originalSymbol === stock.symbol ||
+        p.symbol === stock.symbol ||
+        p.symbol === `${stock.symbol}.TW`,
+    );
+
+  return priceData?.price || 0;
+};
+
+// 獲取股票漲跌的幫助函數
+const getStockChange = (stock) => {
+  // 嘗試使用不同的可能的鍵來獲取價格數據
+  const priceData =
+    stockPrices.value[stock.symbol] ||
+    stockPrices.value[`${stock.symbol}.TW`] ||
+    Object.values(stockPrices.value).find(
+      (p) =>
+        p.originalSymbol === stock.symbol ||
+        p.symbol === stock.symbol ||
+        p.symbol === `${stock.symbol}.TW`,
+    );
+
+  return priceData?.change || 0;
 };
 
 // 獲取股票損益
