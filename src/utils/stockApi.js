@@ -10,6 +10,89 @@ import axios from 'axios';
 // 設置後端 API 基礎URL
 const API_BASE_URL = 'https://yahoo-finance-backend.vercel.app';
 
+// 匯率緩存，避免頻繁請求
+let exchangeRateCache = {
+  USD_TWD: null,
+  lastUpdated: null,
+};
+
+// 獲取美元兌台幣的匯率
+export async function getUSDToTWDRate() {
+  // 如果緩存存在且未過期（1小時內有效），則使用緩存
+  const now = new Date();
+  if (
+    exchangeRateCache.USD_TWD &&
+    exchangeRateCache.lastUpdated &&
+    now - exchangeRateCache.lastUpdated < 3600000
+  ) {
+    console.log('使用緩存的匯率數據');
+    return exchangeRateCache.USD_TWD;
+  }
+
+  try {
+    // 使用Yahoo Finance API獲取USDTWD=X匯率
+    const apiUrl = `${API_BASE_URL}/api/stock/USDTWD=X`;
+    console.log('請求美元兌台幣匯率...');
+
+    const response = await axios.get(apiUrl, {
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+      },
+      timeout: 10000,
+    });
+
+    if (response.data.error) {
+      throw new Error(`API 錯誤: ${response.data.error}`);
+    }
+
+    const rate = response.data.price;
+    console.log(`成功獲取美元兌台幣匯率: 1 USD = ${rate} TWD`);
+
+    // 更新緩存
+    exchangeRateCache = {
+      USD_TWD: rate,
+      lastUpdated: now,
+    };
+
+    // 同時存入localStorage以便跨會話使用
+    try {
+      localStorage.setItem(
+        'exchange-rate-cache',
+        JSON.stringify(exchangeRateCache),
+      );
+    } catch (error) {
+      console.error('無法將匯率數據存入localStorage', error);
+    }
+
+    return rate;
+  } catch (error) {
+    console.error('獲取匯率失敗:', error);
+
+    // 如果請求失敗，嘗試從localStorage讀取舊數據
+    try {
+      const cachedData = localStorage.getItem('exchange-rate-cache');
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        console.log('使用localStorage中的匯率數據');
+        return parsed.USD_TWD;
+      }
+    } catch (e) {
+      console.error('讀取緩存匯率失敗', e);
+    }
+
+    // 如果所有方法都失敗，返回一個預設值（約30，實際匯率會波動）
+    return 30;
+  }
+}
+
+// 將美元轉換為新台幣
+export function convertUSDToTWD(usdAmount, exchangeRate) {
+  if (!usdAmount) return 0;
+  if (!exchangeRate) exchangeRate = 30; // 預設匯率約30
+  return usdAmount * exchangeRate;
+}
+
 /**
  * 確保股票代碼包含正確的後綴
  * 台股應該是 4碼.TW 格式，如 2330.TW

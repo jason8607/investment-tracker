@@ -31,13 +31,18 @@
       <button @click="showAddForm = true" class="btn btn-primary">
         + 新增持股
       </button>
-      <button
-        @click="refreshPrices"
-        class="btn bg-gray-100 text-gray-700 flex items-center"
-      >
-        <span class="mr-1">更新價格</span>
-        <span v-if="loading" class="inline-block animate-spin">⟳</span>
-      </button>
+      <div class="flex items-center">
+        <span class="text-sm text-gray-500 mr-3"
+          >匯率: 1 USD = {{ exchangeRate.toFixed(2) }} TWD</span
+        >
+        <button
+          @click="refreshPrices"
+          class="btn bg-gray-100 text-gray-700 flex items-center"
+        >
+          <span class="mr-1">更新價格</span>
+          <span v-if="loading" class="inline-block animate-spin">⟳</span>
+        </button>
+      </div>
     </div>
 
     <!-- 持股列表 -->
@@ -217,6 +222,8 @@ import {
   formatPrice,
   getMultipleStockPrices,
   getPriceClass,
+  getUSDToTWDRate,
+  convertUSDToTWD,
 } from '../utils/stockApi';
 import { useStorage } from '../utils/storage';
 
@@ -235,6 +242,7 @@ const showAddForm = ref(false);
 const editIndex = ref(null);
 const showDeleteConfirm = ref(null);
 const loading = ref(false);
+const exchangeRate = ref(30); // 預設匯率約30新台幣兌1美元
 
 // 持股表單
 const stockForm = reactive({
@@ -405,7 +413,14 @@ const getStockPrice = (stock) => {
         p.symbol === `${stock.symbol}.TW`,
     );
 
-  return priceData?.price || 0;
+  if (!priceData) return 0;
+
+  // 如果是美股（貨幣為USD），則轉換為新台幣
+  if (priceData.currency === 'USD') {
+    return convertUSDToTWD(priceData.price, exchangeRate.value);
+  }
+
+  return priceData.price || 0;
 };
 
 // 獲取股票漲跌的幫助函數
@@ -453,6 +468,18 @@ const getStockProfitClass = (stock, currentPrice) => {
 // 頁面載入時
 onMounted(() => {
   loadStocks();
+
+  // 獲取匯率
+  getUSDToTWDRate()
+    .then((rate) => {
+      exchangeRate.value = rate;
+      console.log(`設置匯率: 1 USD = ${rate} TWD`);
+      // 取得匯率後重新整理價格
+      refreshPrices();
+    })
+    .catch((error) => {
+      console.error('獲取匯率失敗，使用預設值', error);
+    });
 
   // 每 5 分鐘自動更新一次價格
   const intervalId = setInterval(refreshPrices, 5 * 60 * 1000);
