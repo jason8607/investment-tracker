@@ -1,9 +1,17 @@
 /**
  * 股票 API 工具函數
  * 使用 Yahoo Finance API 獲取股票價格
- * 添加錯誤處理和模擬數據備用方案
  * 支持台股和美股市場
+ * 使用 CORS 代理解決跨來源問題
  */
+
+// 設置 CORS 代理 (可選用不同的服務)
+const CORS_PROXY = 'https://corsproxy.io/?';
+// 備用代理
+const BACKUP_CORS_PROXIES = [
+  'https://api.allorigins.win/raw?url=',
+  'https://cors-anywhere.herokuapp.com/',
+];
 
 /**
  * 確保股票代碼包含正確的後綴
@@ -28,164 +36,174 @@ export function normalizeSymbol(symbol) {
 
 // 獲取單個股票價格
 export async function getStockPrice(symbol) {
-  try {
-    // 確保股票代碼格式正確
-    const normalizedSymbol = normalizeSymbol(symbol);
+  // 確保股票代碼格式正確
+  const normalizedSymbol = normalizeSymbol(symbol);
 
-    // 添加隨機參數避免緩存和限制
-    const timestamp = new Date().getTime();
-    // 使用 Yahoo Finance API
-    const response = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${normalizedSymbol}?interval=1d&t=${timestamp}`,
-      {
+  // 添加隨機參數避免緩存和限制
+  const timestamp = new Date().getTime();
+  // 構建原始 Yahoo Finance API URL
+  const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${normalizedSymbol}?interval=1d&t=${timestamp}`;
+
+  // 使用主要 CORS 代理
+  let proxyUrl = `${CORS_PROXY}${encodeURIComponent(apiUrl)}`;
+  let currentProxyIndex = -1; // 從主代理開始
+
+  console.log(`請求股票數據：${normalizedSymbol}`);
+
+  // 允許最多嘗試所有代理
+  const maxRetries = BACKUP_CORS_PROXIES.length + 1;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // 使用 Yahoo Finance API (通過代理)
+      const response = await fetch(proxyUrl, {
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
           Accept: 'application/json',
           'Cache-Control': 'no-cache',
         },
-        mode: 'cors',
-      },
-    );
+      });
 
-    // 檢查返回狀態
-    if (!response.ok) {
-      console.warn(
-        `API 請求失敗 (${normalizedSymbol}): ${response.status} ${response.statusText}`,
-      );
-      return getSimulatedStockData(normalizedSymbol); // 使用模擬數據
+      // 檢查返回狀態
+      if (!response.ok) {
+        console.warn(
+          `API 請求失敗 (${normalizedSymbol}): ${response.status} ${response.statusText}`,
+        );
+
+        // 如果還有備用代理可用，則嘗試下一個
+        currentProxyIndex++;
+        if (currentProxyIndex < BACKUP_CORS_PROXIES.length) {
+          proxyUrl = `${
+            BACKUP_CORS_PROXIES[currentProxyIndex]
+          }${encodeURIComponent(apiUrl)}`;
+          console.log(`嘗試下一個代理 #${currentProxyIndex + 1}...`);
+          continue;
+        }
+
+        throw new Error(
+          `API 請求失敗: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      const data = await response.json();
+
+      // 檢查是否有錯誤
+      if (data.chart?.error) {
+        throw new Error(`Yahoo API 錯誤: ${JSON.stringify(data.chart.error)}`);
+      }
+
+      // 確保數據結構存在
+      if (!data.chart?.result?.[0]?.meta) {
+        throw new Error('API 返回數據結構異常');
+      }
+
+      // 獲取最新價格
+      const result = data.chart.result[0];
+      const price = result.meta.regularMarketPrice;
+
+      // 貨幣符號 (台幣或美元)
+      const currency =
+        result.meta.currency ||
+        (normalizedSymbol.endsWith('.TW') ? 'TWD' : 'USD');
+
+      console.log(`成功獲取 ${normalizedSymbol} 價格: ${price} ${currency}`);
+
+      return {
+        symbol: normalizedSymbol,
+        price,
+        change: result.meta.regularMarketChange,
+        changePercent: result.meta.regularMarketChangePercent,
+        time: new Date(result.meta.regularMarketTime * 1000),
+        currency,
+        exchangeName: result.meta.exchangeName || '',
+        lastUpdated: new Date(),
+      };
+    } catch (error) {
+      // 如果這是最後一次嘗試，拋出錯誤
+      if (
+        attempt === maxRetries - 1 ||
+        currentProxyIndex >= BACKUP_CORS_PROXIES.length - 1
+      ) {
+        console.error(`獲取 ${normalizedSymbol} 價格失敗:`, error);
+        throw error;
+      }
+
+      // 否則嘗試下一個代理
+      currentProxyIndex++;
+      proxyUrl = `${BACKUP_CORS_PROXIES[currentProxyIndex]}${encodeURIComponent(
+        apiUrl,
+      )}`;
+      console.log(`API 錯誤，嘗試下一個代理 #${currentProxyIndex + 1}...`);
     }
-
-    const data = await response.json();
-
-    // 檢查是否有錯誤
-    if (data.chart?.error) {
-      console.error(`獲取股票價格出錯 (${normalizedSymbol})`, data.chart.error);
-      return getSimulatedStockData(normalizedSymbol); // 使用模擬數據
-    }
-
-    // 確保數據結構存在
-    if (!data.chart?.result?.[0]?.meta) {
-      console.warn(`API 返回結構異常 (${normalizedSymbol})`, data);
-      return getSimulatedStockData(normalizedSymbol); // 使用模擬數據
-    }
-
-    // 獲取最新價格
-    const result = data.chart.result[0];
-    const price = result.meta.regularMarketPrice;
-
-    // 貨幣符號 (台幣或美元)
-    const currency =
-      result.meta.currency ||
-      (normalizedSymbol.endsWith('.TW') ? 'TWD' : 'USD');
-
-    return {
-      symbol: normalizedSymbol,
-      price,
-      change: result.meta.regularMarketChange,
-      changePercent: result.meta.regularMarketChangePercent,
-      time: new Date(result.meta.regularMarketTime * 1000),
-      currency,
-      exchangeName: result.meta.exchangeName || '',
-    };
-  } catch (error) {
-    console.error(`獲取股票價格出錯 (${symbol})`, error);
-    return getSimulatedStockData(normalizeSymbol(symbol)); // 使用模擬數據
   }
+
+  // 不應該到達這裡，但為了安全起見
+  throw new Error(`無法獲取 ${normalizedSymbol} 的股票數據`);
 }
 
 // 獲取多個股票價格
 export async function getMultipleStockPrices(symbols) {
-  try {
-    // 同時獲取多個股票價格，但限制並發請求數量
-    const results = [];
-    const batchSize = 3; // 一次最多處理 3 個請求
+  // 過濾掉空值
+  const validSymbols = symbols.filter((s) => s && s.trim());
 
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const batch = symbols.slice(i, i + batchSize);
-      const promises = batch.map((symbol) => getStockPrice(symbol));
-      const batchResults = await Promise.allSettled(promises);
+  if (validSymbols.length === 0) {
+    return [];
+  }
 
-      results.push(...batchResults);
+  // 同時獲取多個股票價格，但限制並發請求數量
+  const results = [];
+  const batchSize = 2; // 一次最多處理 2 個請求，避免超出限制
 
-      if (i + batchSize < symbols.length) {
-        // 添加延遲避免被限制請求
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
+  console.log(`開始批量獲取 ${validSymbols.length} 支股票數據`);
+
+  for (let i = 0; i < validSymbols.length; i += batchSize) {
+    const batch = validSymbols.slice(i, i + batchSize);
+    console.log(
+      `處理批次 ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+        validSymbols.length / batchSize,
+      )}: ${batch.join(', ')}`,
+    );
+
+    const promises = batch.map((symbol) =>
+      getStockPrice(symbol).catch((error) => {
+        console.error(`獲取 ${symbol} 數據失敗:`, error);
+        return {
+          error: true,
+          errorMessage: error.message || '未知錯誤',
+          symbol: normalizeSymbol(symbol),
+          originalSymbol: symbol,
+        };
+      }),
+    );
+
+    const batchResults = await Promise.all(promises);
+    results.push(...batchResults);
+
+    if (i + batchSize < validSymbols.length) {
+      // 添加延遲避免被限制請求
+      console.log('延遲 1.5 秒後獲取下一批...');
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+
+  // 格式化返回結果
+  return results.map((result, index) => {
+    if (result.error) {
+      return {
+        originalSymbol: validSymbols[index],
+        symbol: normalizeSymbol(validSymbols[index]),
+        price: null,
+        error: true,
+        errorMessage: result.errorMessage || '獲取數據失敗',
+      };
     }
 
-    // 處理結果
-    return results.map((result, index) => {
-      if (result.status === 'fulfilled' && result.value) {
-        return {
-          originalSymbol: symbols[index],
-          ...result.value,
-        };
-      } else {
-        return {
-          originalSymbol: symbols[index],
-          symbol: normalizeSymbol(symbols[index]),
-          price: null,
-          error: true,
-        };
-      }
-    });
-  } catch (error) {
-    console.error('獲取多個股票價格出錯', error);
-    return symbols.map((symbol) => ({
-      originalSymbol: symbol,
-      symbol: normalizeSymbol(symbol),
-      price: null,
-      error: true,
-    }));
-  }
-}
-
-// 生成模擬股票數據的函數（備用方案）
-function getSimulatedStockData(symbol) {
-  // 為不同股票生成不同但穩定的價格
-  const isTaiwanStock = symbol.endsWith('.TW');
-
-  // 台股基礎價格範圍較小，美股範圍較大
-  const minPrice = isTaiwanStock ? 50 : 100;
-  const maxPrice = isTaiwanStock ? 500 : 1000;
-  const range = maxPrice - minPrice;
-
-  const basePrice = (getHashCode(symbol) % range) + minPrice;
-
-  // 生成小幅波動 (-5% ~ +5%)
-  const changePercent = (Math.random() * 10 - 5) / 100;
-  const change = basePrice * changePercent;
-  const price = basePrice + change;
-
-  // 貨幣設置
-  const currency = isTaiwanStock ? 'TWD' : 'USD';
-  const exchangeName = isTaiwanStock ? 'TWSE' : 'NASDAQ';
-
-  console.log(`使用模擬數據 ${symbol}: ${price.toFixed(2)} ${currency}`);
-
-  return {
-    symbol,
-    price,
-    change,
-    changePercent,
-    time: new Date(),
-    currency,
-    exchangeName,
-    simulated: true, // 標記為模擬數據
-  };
-}
-
-// 簡單的字串哈希函數
-function getHashCode(str) {
-  let hash = 0;
-  if (str.length === 0) return hash;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return Math.abs(hash);
+    return {
+      originalSymbol: validSymbols[index],
+      ...result,
+    };
+  });
 }
 
 // 格式化價格
