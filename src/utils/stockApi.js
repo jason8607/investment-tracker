@@ -112,13 +112,37 @@ export function convertUSDToTWD(usdAmount, exchangeRate) {
   return usdAmount * exchangeRate;
 }
 
+/**
+ * 確保股票代碼包含正確的後綴
+ * 台股應該是 4碼.TW 格式，如 2330.TW
+ * 美股不需要後綴，但可以是 AAPL 或 AAPL.US 格式
+ */
+export function normalizeSymbol(symbol) {
+  if (!symbol) return '';
+
+  // 已經有後綴的情況
+  if (symbol.includes('.')) return symbol;
+
+  // 從純數字判斷改為更準確的判斷方式
+  const isTaiwanStock =
+    symbol.includes('.TW') ||
+    (symbol.length <= 6 && /^\d{4,}[A-Za-z]?$/.test(symbol));
+
+  if (isTaiwanStock) {
+    return `${symbol}.TW`;
+  } else {
+    return symbol; // 美股保持原樣
+  }
+}
+
 // 獲取單個股票價格
 export async function getStockPrice(symbol) {
   // 確保股票代碼格式正確
   const originalSymbol = symbol;
-  const apiUrl = `${API_BASE_URL}/api/stock/${symbol}`;
+  const normalizedSymbol = normalizeSymbol(symbol);
+  const apiUrl = `${API_BASE_URL}/api/stock/${normalizedSymbol}`;
 
-  console.log(`請求股票數據：${symbol}`);
+  console.log(`請求股票數據：${normalizedSymbol}`);
 
   try {
     const response = await axios.get(apiUrl, {
@@ -135,7 +159,7 @@ export async function getStockPrice(symbol) {
     }
 
     console.log(
-      `成功獲取 ${symbol} 價格: ${response.data.price} ${response.data.currency}`,
+      `成功獲取 ${normalizedSymbol} 價格: ${response.data.price} ${response.data.currency}`,
     );
 
     // 確保返回的數據中包含原始符號和股票名稱
@@ -150,7 +174,7 @@ export async function getStockPrice(symbol) {
         '未知股票',
     };
   } catch (error) {
-    console.error(`獲取 ${symbol} 價格失敗:`, error);
+    console.error(`獲取 ${normalizedSymbol} 價格失敗:`, error);
     if (error.response) {
       // 服務器返回了錯誤狀態碼
       throw new Error(
@@ -177,7 +201,12 @@ export async function getMultipleStockPrices(symbols) {
 
   // 使用批量API端點
   // 創建包含原始與標準化symbol的映射以便於後續處理
-  const apiUrl = `${API_BASE_URL}/api/stocks?symbols=${validSymbols.join(',')}`;
+  const normalizedSymbols = validSymbols.map((symbol) =>
+    normalizeSymbol(symbol),
+  );
+  const apiUrl = `${API_BASE_URL}/api/stocks?symbols=${normalizedSymbols.join(
+    ',',
+  )}`;
   console.log(`批量獲取股票數據: ${validSymbols.join(', ')}`);
 
   try {
