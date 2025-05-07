@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yahoo Finance API 測試工具</title>
+    <style>
+      body {
+        font-family: 'Microsoft JhengHei', Arial, sans-serif;
+        line-height: 1.6;
+        margin: 0;
+        padding: 20px;
+        background-color: #f7f9fc;
+        color: #333;
+      }
+      h1 {
+        color: #1a73e8;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        padding: 25px;
+      }
+      .form-group {
+        margin-bottom: 20px;
+      }
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+      }
+      input,
+      select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 16px;
+      }
+      button {
+        background-color: #1a73e8;
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+        margin-right: 10px;
+      }
+      button:hover {
+        background-color: #155db9;
+      }
+      .button-group {
+        margin-top: 20px;
+        display: flex;
+        gap: 10px;
+      }
+      #result {
+        margin-top: 30px;
+        padding: 15px;
+        background-color: #f5f5f5;
+        border-radius: 4px;
+        min-height: 100px;
+        white-space: pre-wrap;
+        font-family: monospace;
+        font-size: 14px;
+        overflow-x: auto;
+      }
+      .tab {
+        display: inline-block;
+        padding: 10px 20px;
+        background-color: #eee;
+        cursor: pointer;
+        border-radius: 4px 4px 0 0;
+        margin-right: 5px;
+      }
+      .tab.active {
+        background-color: #1a73e8;
+        color: white;
+      }
+      .tab-content {
+        display: none;
+        margin-top: 20px;
+      }
+      .tab-content.active {
+        display: block;
+      }
+      .status {
+        padding: 8px;
+        margin-top: 10px;
+        border-radius: 4px;
+      }
+      .status.success {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .status.error {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .loading {
+        text-align: center;
+        margin: 20px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Yahoo Finance API 測試工具</h1>
+
+      <div>
+        <div class="tab active" onclick="switchTab('single')">單一股票</div>
+        <div class="tab" onclick="switchTab('multiple')">多支股票</div>
+        <div class="tab" onclick="switchTab('health')">健康檢查</div>
+      </div>
+
+      <div id="single-tab" class="tab-content active">
+        <div class="form-group">
+          <label for="api-url">API 網址：</label>
+          <input
+            type="text"
+            id="api-url"
+            placeholder="輸入您的API基礎URL，例如：https://您的-vercel-網址.vercel.app"
+            value="https://yahoo-finance-backend-45bvzg7e6-jason8607s-projects.vercel.app"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="symbol">股票代碼：</label>
+          <input
+            type="text"
+            id="symbol"
+            placeholder="輸入股票代碼，例如：AAPL 或 2330.TW"
+            value="AAPL"
+          />
+        </div>
+
+        <div class="button-group">
+          <button onclick="getStockPrice()">獲取股票價格</button>
+          <button onclick="clearResult()">清除結果</button>
+        </div>
+      </div>
+
+      <div id="multiple-tab" class="tab-content">
+        <div class="form-group">
+          <label for="multi-api-url">API 網址：</label>
+          <input
+            type="text"
+            id="multi-api-url"
+            placeholder="輸入您的API基礎URL，例如：https://您的-vercel-網址.vercel.app"
+            value="https://yahoo-finance-backend-45bvzg7e6-jason8607s-projects.vercel.app"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="symbols">多支股票代碼（以逗號分隔）：</label>
+          <input
+            type="text"
+            id="symbols"
+            placeholder="輸入多支股票代碼，例如：AAPL,MSFT,2330.TW"
+            value="AAPL,MSFT,2330.TW"
+          />
+        </div>
+
+        <div class="button-group">
+          <button onclick="getMultipleStockPrices()">獲取多支股票價格</button>
+          <button onclick="clearResult()">清除結果</button>
+        </div>
+      </div>
+
+      <div id="health-tab" class="tab-content">
+        <div class="form-group">
+          <label for="health-api-url">API 網址：</label>
+          <input
+            type="text"
+            id="health-api-url"
+            placeholder="輸入您的API基礎URL，例如：https://您的-vercel-網址.vercel.app"
+            value="https://yahoo-finance-backend-45bvzg7e6-jason8607s-projects.vercel.app"
+          />
+        </div>
+
+        <div class="button-group">
+          <button onclick="checkHealth()">健康檢查</button>
+          <button onclick="clearResult()">清除結果</button>
+        </div>
+      </div>
+
+      <div id="status" class="status" style="display: none"></div>
+      <div id="loading" class="loading" style="display: none">
+        請求中，請稍候...
+      </div>
+
+      <div id="result"></div>
+    </div>
+
+    <script>
+      function switchTab(tabName) {
+        // 隱藏所有標籤內容
+        document.querySelectorAll('.tab-content').forEach((tab) => {
+          tab.classList.remove('active');
+        });
+
+        // 取消所有標籤激活狀態
+        document.querySelectorAll('.tab').forEach((tab) => {
+          tab.classList.remove('active');
+        });
+
+        // 激活選中的標籤
+        document.getElementById(tabName + '-tab').classList.add('active');
+        document
+          .querySelector(`.tab[onclick="switchTab('${tabName}')"]`)
+          .classList.add('active');
+      }
+
+      function showLoading() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('result').innerHTML = '';
+        document.getElementById('status').style.display = 'none';
+      }
+
+      function hideLoading() {
+        document.getElementById('loading').style.display = 'none';
+      }
+
+      function showStatus(message, isSuccess) {
+        const status = document.getElementById('status');
+        status.textContent = message;
+        status.className = isSuccess ? 'status success' : 'status error';
+        status.style.display = 'block';
+      }
+
+      async function getStockPrice() {
+        const apiUrl = document.getElementById('api-url').value.trim();
+        const symbol = document.getElementById('symbol').value.trim();
+
+        if (!apiUrl || !symbol) {
+          showStatus('請輸入API網址和股票代碼', false);
+          return;
+        }
+
+        const url = `${apiUrl}/api/stock/${symbol}`;
+        showLoading();
+
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
+
+          document.getElementById('result').textContent = JSON.stringify(
+            data,
+            null,
+            2,
+          );
+
+          if (data.error) {
+            showStatus(`錯誤: ${data.error}`, false);
+          } else {
+            showStatus(
+              `成功獲取 ${symbol} 股票價格: ${data.price} ${data.currency}`,
+              true,
+            );
+          }
+        } catch (error) {
+          document.getElementById(
+            'result',
+          ).textContent = `請求失敗: ${error.message}`;
+          showStatus(`請求失敗: ${error.message}`, false);
+        } finally {
+          hideLoading();
+        }
+      }
+
+      async function getMultipleStockPrices() {
+        const apiUrl = document.getElementById('multi-api-url').value.trim();
+        const symbols = document.getElementById('symbols').value.trim();
+
+        if (!apiUrl || !symbols) {
+          showStatus('請輸入API網址和股票代碼', false);
+          return;
+        }
+
+        const url = `${apiUrl}/api/stocks?symbols=${symbols}`;
+        showLoading();
+
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
+
+          document.getElementById('result').textContent = JSON.stringify(
+            data,
+            null,
+            2,
+          );
+
+          if (Array.isArray(data) && data.length > 0) {
+            showStatus(`成功獲取 ${data.length} 支股票價格資料`, true);
+          } else {
+            showStatus('未獲取到有效數據', false);
+          }
+        } catch (error) {
+          document.getElementById(
+            'result',
+          ).textContent = `請求失敗: ${error.message}`;
+          showStatus(`請求失敗: ${error.message}`, false);
+        } finally {
+          hideLoading();
+        }
+      }
+
+      async function checkHealth() {
+        const apiUrl = document.getElementById('health-api-url').value.trim();
+
+        if (!apiUrl) {
+          showStatus('請輸入API網址', false);
+          return;
+        }
+
+        const url = `${apiUrl}/health`;
+        showLoading();
+
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
+
+          document.getElementById('result').textContent = JSON.stringify(
+            data,
+            null,
+            2,
+          );
+
+          if (data.status === 'healthy') {
+            showStatus('API服務正常運行！', true);
+          } else {
+            showStatus('API服務狀態異常', false);
+          }
+        } catch (error) {
+          document.getElementById(
+            'result',
+          ).textContent = `請求失敗: ${error.message}`;
+          showStatus(`請求失敗: ${error.message}`, false);
+        } finally {
+          hideLoading();
+        }
+      }
+
+      function clearResult() {
+        document.getElementById('result').textContent = '';
+        document.getElementById('status').style.display = 'none';
+      }
+    </script>
+  </body>
+</html>
