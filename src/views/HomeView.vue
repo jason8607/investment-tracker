@@ -73,21 +73,19 @@
               <td>{{ stock.quantity }}</td>
               <td>{{ formatPrice(stock.cost) }}</td>
               <td :class="getPriceClass(getStockChange(stock))">
-                {{
-                  getStockPrice(stock)
-                    ? formatPrice(getStockPrice(stock))
-                    : '載入中...'
-                }}
+                {{ formatStockPrice(stock) }}
               </td>
               <td>
                 {{
                   getStockPrice(stock)
-                    ? formatMoney(stock.quantity * getStockPrice(stock))
+                    ? formatMoney(stock.quantity * getStockValuePrice(stock))
                     : '載入中...'
                 }}
               </td>
-              <td :class="getStockProfitClass(stock, getStockPrice(stock))">
-                {{ getStockProfit(stock, getStockPrice(stock)) }}
+              <td
+                :class="getStockProfitClass(stock, getStockValuePrice(stock))"
+              >
+                {{ getStockProfit(stock, getStockValuePrice(stock)) }}
               </td>
               <td>
                 <div class="flex space-x-2">
@@ -220,6 +218,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import {
   formatPrice,
+  formatUSPrice,
   getMultipleStockPrices,
   getPriceClass,
   getUSDToTWDRate,
@@ -264,7 +263,7 @@ const totalCost = computed(() => {
 
 const totalValue = computed(() => {
   return stocks.value.reduce((total, stock) => {
-    const price = getStockPrice(stock);
+    const price = getStockValuePrice(stock);
     return total + price * stock.quantity;
   }, 0);
 });
@@ -415,12 +414,57 @@ const getStockPrice = (stock) => {
 
   if (!priceData) return 0;
 
-  // 如果是美股（貨幣為USD），則轉換為新台幣
+  // 返回原始價格（不做匯率轉換）
+  return priceData.price || 0;
+};
+
+// 獲取用於計算的價格（對於收益率計算）
+const getStockValuePrice = (stock) => {
+  const price = getStockPrice(stock);
+  const priceData =
+    stockPrices.value[stock.symbol] ||
+    stockPrices.value[`${stock.symbol}.TW`] ||
+    Object.values(stockPrices.value).find(
+      (p) =>
+        p.originalSymbol === stock.symbol ||
+        p.symbol === stock.symbol ||
+        p.symbol === `${stock.symbol}.TW`,
+    );
+
+  if (!priceData) return price;
+
+  // 轉換美股價格為台幣（僅用於計算總市值和收益率）
   if (priceData.currency === 'USD') {
-    return convertUSDToTWD(priceData.price, exchangeRate.value);
+    return price * exchangeRate.value;
   }
 
-  return priceData.price || 0;
+  return price;
+};
+
+// 格式化價格顯示
+const formatStockPrice = (stock) => {
+  const price = getStockPrice(stock);
+  if (!price) return '載入中...';
+
+  const priceData =
+    stockPrices.value[stock.symbol] ||
+    stockPrices.value[`${stock.symbol}.TW`] ||
+    Object.values(stockPrices.value).find(
+      (p) =>
+        p.originalSymbol === stock.symbol ||
+        p.symbol === stock.symbol ||
+        p.symbol === `${stock.symbol}.TW`,
+    );
+
+  if (!priceData) return formatPrice(price);
+
+  // 美股顯示美元價格並在括號中顯示台幣
+  if (priceData.currency === 'USD') {
+    return formatUSPrice(price, exchangeRate.value);
+  }
+
+  // 台股直接顯示台幣
+  return formatPrice(price, 'TWD');
 };
 
 // 獲取股票漲跌的幫助函數
@@ -480,11 +524,5 @@ onMounted(() => {
     .catch((error) => {
       console.error('獲取匯率失敗，使用預設值', error);
     });
-
-  // 每 5 分鐘自動更新一次價格
-  const intervalId = setInterval(refreshPrices, 5 * 60 * 1000);
-
-  // 銷毀時清除定時器
-  return () => clearInterval(intervalId);
 });
 </script>

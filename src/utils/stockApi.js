@@ -253,6 +253,16 @@ export function formatPrice(price, currency, digits = 2) {
   return `${currencySymbol}${price.toFixed(digits)}`;
 }
 
+// 格式化美股價格（顯示美元和台幣）
+export function formatUSPrice(price, exchangeRate, digits = 2) {
+  if (price === null || price === undefined) return '-';
+
+  const usdFormatted = `$${price.toFixed(digits)}`;
+  const twdFormatted = `NT$${(price * exchangeRate).toFixed(digits)}`;
+
+  return `${usdFormatted} (${twdFormatted})`;
+}
+
 // 格式化漲跌幅
 export function formatChange(change, changePercent, digits = 2) {
   if (change === null || change === undefined) return '-';
