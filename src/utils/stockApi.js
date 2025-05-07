@@ -34,6 +34,7 @@ export function normalizeSymbol(symbol) {
 // 獲取單個股票價格
 export async function getStockPrice(symbol) {
   // 確保股票代碼格式正確
+  const originalSymbol = symbol;
   const normalizedSymbol = normalizeSymbol(symbol);
   const apiUrl = `${API_BASE_URL}/api/stock/${normalizedSymbol}`;
 
@@ -57,7 +58,11 @@ export async function getStockPrice(symbol) {
       `成功獲取 ${normalizedSymbol} 價格: ${response.data.price} ${response.data.currency}`,
     );
 
-    return response.data;
+    // 確保返回的數據中包含原始符號
+    return {
+      ...response.data,
+      originalSymbol: originalSymbol,
+    };
   } catch (error) {
     console.error(`獲取 ${normalizedSymbol} 價格失敗:`, error);
     if (error.response) {
@@ -85,7 +90,13 @@ export async function getMultipleStockPrices(symbols) {
   }
 
   // 使用批量API端點
-  const apiUrl = `${API_BASE_URL}/api/stocks?symbols=${validSymbols.join(',')}`;
+  // 創建包含原始與標準化symbol的映射以便於後續處理
+  const normalizedSymbols = validSymbols.map((symbol) =>
+    normalizeSymbol(symbol),
+  );
+  const apiUrl = `${API_BASE_URL}/api/stocks?symbols=${normalizedSymbols.join(
+    ',',
+  )}`;
   console.log(`批量獲取股票數據: ${validSymbols.join(', ')}`);
 
   try {
@@ -98,7 +109,16 @@ export async function getMultipleStockPrices(symbols) {
     });
 
     console.log(`成功獲取 ${response.data.length} 支股票數據`);
-    return response.data;
+
+    // 確保每個結果都有originalSymbol屬性，如果後端沒提供
+    const results = response.data.map((item, index) => {
+      if (!item.originalSymbol) {
+        item.originalSymbol = validSymbols[index];
+      }
+      return item;
+    });
+
+    return results;
   } catch (error) {
     console.error('批量獲取股票數據失敗:', error);
 

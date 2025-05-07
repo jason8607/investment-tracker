@@ -298,10 +298,22 @@ const refreshPrices = async () => {
     // 更新價格
     const pricesObj = {};
     results.forEach((result) => {
-      pricesObj[result.symbol] = result;
+      // 使用 originalSymbol 作為 key，這樣可以匹配前端保存的 symbol 格式
+      const key = result.originalSymbol || result.symbol;
+      pricesObj[key] = result;
     });
 
     stockPrices.value = pricesObj;
+
+    // 可選：將價格數據存入 localStorage 以便於其他頁面使用
+    try {
+      localStorage.setItem(
+        'investment-tracker-prices',
+        JSON.stringify(pricesObj),
+      );
+    } catch (error) {
+      console.error('無法儲存價格資料到本地存儲', error);
+    }
   } catch (error) {
     console.error('更新價格出錯', error);
   } finally {
