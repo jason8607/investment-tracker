@@ -30,24 +30,43 @@ export async function getUSDToTWDRate() {
   }
 
   try {
-    // 使用Yahoo Finance API獲取USDTWD=X匯率
-    const apiUrl = `${API_BASE_URL}/api/stock/USDTWD=X`;
-    console.log('請求美元兌台幣匯率...');
+    // 嘗試使用不同的匯率代碼格式
+    const symbols = ['USDTWD=X', 'TWD=X'];
 
-    const response = await axios.get(apiUrl, {
-      headers: {
-        Accept: 'application/json',
-        'Cache-Control': 'no-cache',
-      },
-      timeout: 10000,
-    });
+    // 首先嘗試 USDTWD=X
+    let response;
+    let rate = null;
 
-    if (response.data.error) {
-      throw new Error(`API 錯誤: ${response.data.error}`);
+    for (const symbol of symbols) {
+      try {
+        const apiUrl = `${API_BASE_URL}/api/stock/${symbol}`;
+        console.log(`請求美元兌台幣匯率 (${symbol})...`);
+
+        response = await axios.get(apiUrl, {
+          headers: {
+            Accept: 'application/json',
+            'Cache-Control': 'no-cache',
+          },
+          timeout: 10000,
+        });
+
+        if (!response.data.error && response.data.price) {
+          rate = response.data.price;
+          console.log(
+            `成功獲取美元兌台幣匯率: 1 USD = ${rate} TWD (使用${symbol})`,
+          );
+          break;
+        }
+      } catch (err) {
+        console.error(`使用 ${symbol} 獲取匯率失敗:`, err.message);
+      }
     }
 
-    const rate = response.data.price;
-    console.log(`成功獲取美元兌台幣匯率: 1 USD = ${rate} TWD`);
+    // 如果沒有獲取到有效匯率，使用備用方法：固定值約30
+    if (!rate) {
+      console.log('無法從API獲取匯率，使用預設值');
+      rate = 30;
+    }
 
     // 更新緩存
     exchangeRateCache = {
