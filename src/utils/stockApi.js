@@ -123,8 +123,10 @@ export function normalizeSymbol(symbol) {
   // 已經有後綴的情況
   if (symbol.includes('.')) return symbol;
 
-  // 判斷是台股還是美股（簡單規則：台股通常是數字，美股通常包含字母）
-  const isTaiwanStock = /^\d+$/.test(symbol);
+  // 從純數字判斷改為更準確的判斷方式
+  const isTaiwanStock =
+    symbol.includes('.TW') ||
+    (symbol.length <= 6 && /^\d{4,}[A-Za-z]?$/.test(symbol));
 
   if (isTaiwanStock) {
     return `${symbol}.TW`;
