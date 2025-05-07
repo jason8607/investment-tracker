@@ -6,7 +6,7 @@
  */
 
 // 設置後端 API 基礎URL
-const API_BASE_URL = 'https://yahoo-finance-backend.vercel.app/api/stock';
+const API_BASE_URL = 'https://yahoo-finance-backend.vercel.app/';
 
 /**
  * 確保股票代碼包含正確的後綴
