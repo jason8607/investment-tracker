@@ -248,7 +248,7 @@ export function formatPrice(price, currency, digits = 2) {
   if (price === null || price === undefined) return '-';
 
   // 貨幣符號
-  const currencySymbol = currency === 'TWD' ? 'NT$' : '$';
+  const currencySymbol = currency === 'TWD' ? 'NT$' : 'US$';
 
   return `${currencySymbol}${price.toFixed(digits)}`;
 }
@@ -257,7 +257,7 @@ export function formatPrice(price, currency, digits = 2) {
 export function formatUSPrice(price, exchangeRate, digits = 2) {
   if (price === null || price === undefined) return '-';
 
-  const usdFormatted = `$${price.toFixed(digits)}`;
+  const usdFormatted = `US$${price.toFixed(digits)}`;
   const twdFormatted = `NT$${(price * exchangeRate).toFixed(digits)}`;
 
   return `${usdFormatted} (${twdFormatted})`;

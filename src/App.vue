@@ -50,7 +50,9 @@
     <main class="container mx-auto p-4">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
-          <component :is="Component" />
+          <keep-alive>
+            <component :is="Component" :key="$route.path" />
+          </keep-alive>
         </transition>
       </router-view>
     </main>
