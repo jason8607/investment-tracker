@@ -5,8 +5,10 @@
  * 使用自託管的後端服務解決跨來源問題
  */
 
+import axios from 'axios';
+
 // 設置後端 API 基礎URL
-const API_BASE_URL = 'https://yahoo-finance-backend.vercel.app/';
+const API_BASE_URL = 'https://yahoo-finance-backend.vercel.app';
 
 /**
  * 確保股票代碼包含正確的後綴
@@ -38,38 +40,38 @@ export async function getStockPrice(symbol) {
   console.log(`請求股票數據：${normalizedSymbol}`);
 
   try {
-    const response = await fetch(apiUrl, {
+    const response = await axios.get(apiUrl, {
       headers: {
         Accept: 'application/json',
         'Cache-Control': 'no-cache',
       },
+      timeout: 10000, // 10秒超時
     });
 
-    // 檢查返回狀態
-    if (!response.ok) {
-      console.warn(
-        `API 請求失敗 (${normalizedSymbol}): ${response.status} ${response.statusText}`,
-      );
-      throw new Error(
-        `API 請求失敗: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-
     // 檢查是否有錯誤
-    if (data.error) {
-      throw new Error(`API 錯誤: ${data.error}`);
+    if (response.data.error) {
+      throw new Error(`API 錯誤: ${response.data.error}`);
     }
 
     console.log(
-      `成功獲取 ${normalizedSymbol} 價格: ${data.price} ${data.currency}`,
+      `成功獲取 ${normalizedSymbol} 價格: ${response.data.price} ${response.data.currency}`,
     );
 
-    return data;
+    return response.data;
   } catch (error) {
     console.error(`獲取 ${normalizedSymbol} 價格失敗:`, error);
-    throw error;
+    if (error.response) {
+      // 服務器返回了錯誤狀態碼
+      throw new Error(
+        `API 請求失敗: ${error.response.status} ${error.response.statusText}`,
+      );
+    } else if (error.request) {
+      // 請求已發送但沒有收到回應
+      throw new Error('無法連接到服務器，請檢查網絡連接');
+    } else {
+      // 在請求設置時發生錯誤
+      throw error;
+    }
   }
 }
 
@@ -87,26 +89,16 @@ export async function getMultipleStockPrices(symbols) {
   console.log(`批量獲取股票數據: ${validSymbols.join(', ')}`);
 
   try {
-    const response = await fetch(apiUrl, {
+    const response = await axios.get(apiUrl, {
       headers: {
         Accept: 'application/json',
         'Cache-Control': 'no-cache',
       },
+      timeout: 15000, // 15秒超時，批量請求可能需要更長時間
     });
 
-    if (!response.ok) {
-      console.warn(
-        `批量API請求失敗: ${response.status} ${response.statusText}`,
-      );
-      throw new Error(
-        `批量API請求失敗: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const results = await response.json();
-    console.log(`成功獲取 ${results.length} 支股票數據`);
-
-    return results;
+    console.log(`成功獲取 ${response.data.length} 支股票數據`);
+    return response.data;
   } catch (error) {
     console.error('批量獲取股票數據失敗:', error);
 
