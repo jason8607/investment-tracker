@@ -268,6 +268,7 @@
               required
               class="input w-full"
               placeholder="例如：2330.TW 或 AAPL"
+              @blur="fetchStockName"
             />
           </div>
           <div class="mb-4">
@@ -276,8 +277,12 @@
               v-model="stockForm.name"
               required
               class="input w-full"
-              placeholder="例如：台積電 或 蘋果"
+              placeholder="自動獲取，或手動輸入"
+              :disabled="isLoadingName"
             />
+            <div v-if="isLoadingName" class="text-sm text-gray-500 mt-1">
+              正在獲取股票名稱...
+            </div>
           </div>
           <div class="mb-4">
             <label class="block text-sm font-medium mb-1">市場</label>
@@ -365,6 +370,7 @@ import {
   getPriceClass,
   getUSDToTWDRate,
   convertUSDToTWD,
+  getStockName,
 } from '../utils/stockApi';
 import { useStorage } from '../utils/storage';
 import MarketPieChart from '../components/MarketPieChart.vue';
@@ -397,6 +403,27 @@ const stockForm = reactive({
   quantity: 0,
   purchaseDate: new Date().toISOString().split('T')[0],
 });
+
+// 添加獲取股票名稱的相關狀態和方法
+const isLoadingName = ref(false);
+
+// 當股票代碼變更時，自動獲取股票名稱
+const fetchStockName = async () => {
+  if (!stockForm.symbol) return;
+
+  isLoadingName.value = true;
+  try {
+    const name = await getStockName(stockForm.symbol);
+    if (name) {
+      stockForm.name = name;
+      console.log(`自動獲取股票名稱: ${stockForm.symbol} -> ${name}`);
+    }
+  } catch (error) {
+    console.error('獲取股票名稱失敗:', error);
+  } finally {
+    isLoadingName.value = false;
+  }
+};
 
 // 根據當前標籤過濾股票
 const filteredStocks = computed(() => {

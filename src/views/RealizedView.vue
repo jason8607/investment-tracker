@@ -232,6 +232,7 @@
               required
               class="input w-full"
               placeholder="例如：2330.TW 或 AAPL"
+              @blur="fetchStockName"
             />
           </div>
           <div class="mb-4">
@@ -240,8 +241,12 @@
               v-model="tradeForm.name"
               required
               class="input w-full"
-              placeholder="例如：台積電 或 蘋果"
+              placeholder="自動獲取，或手動輸入"
+              :disabled="isLoadingName"
             />
+            <div v-if="isLoadingName" class="text-sm text-gray-500 mt-1">
+              正在獲取股票名稱...
+            </div>
           </div>
           <div class="mb-4">
             <label class="block text-sm font-medium mb-1">市場</label>
@@ -362,6 +367,7 @@ import {
   PointElement,
   LineElement,
 } from 'chart.js';
+import { getStockName } from '../utils/stockApi';
 
 // 註冊 ChartJS 組件
 ChartJS.register(
@@ -637,6 +643,38 @@ const calculateTotalCost = () => {
 const getFormattedTotalCost = () => {
   const cost = calculateTotalCost();
   return formatMoney(cost);
+};
+
+// 添加新增表單相關狀態
+const isLoadingName = ref(false);
+
+// 添加獲取股票名稱方法
+// 當股票代碼變更時，自動獲取股票名稱
+const fetchStockName = async () => {
+  if (!tradeForm.symbol) return;
+
+  isLoadingName.value = true;
+  try {
+    const name = await getStockName(tradeForm.symbol);
+    if (name) {
+      tradeForm.name = name;
+      console.log(`自動獲取股票名稱: ${tradeForm.symbol} -> ${name}`);
+
+      // 根據股票代碼自動判斷市場
+      if (
+        tradeForm.symbol.includes('.TW') ||
+        /^\d{4,}[A-Za-z]?$/.test(tradeForm.symbol)
+      ) {
+        tradeForm.market = '台股';
+      } else if (/[A-Za-z]/.test(tradeForm.symbol)) {
+        tradeForm.market = '美股';
+      }
+    }
+  } catch (error) {
+    console.error('獲取股票名稱失敗:', error);
+  } finally {
+    isLoadingName.value = false;
+  }
 };
 
 // 頁面載入時

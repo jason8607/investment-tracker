@@ -162,10 +162,16 @@ export async function getStockPrice(symbol) {
       `成功獲取 ${normalizedSymbol} 價格: ${response.data.price} ${response.data.currency}`,
     );
 
-    // 確保返回的數據中包含原始符號
+    // 確保返回的數據中包含原始符號和股票名稱
     return {
       ...response.data,
       originalSymbol: originalSymbol,
+      // 確保股票名稱存在，即使API沒有返回
+      name:
+        response.data.name ||
+        response.data.shortName ||
+        response.data.longName ||
+        '未知股票',
     };
   } catch (error) {
     console.error(`獲取 ${normalizedSymbol} 價格失敗:`, error);
@@ -214,10 +220,14 @@ export async function getMultipleStockPrices(symbols) {
 
     console.log(`成功獲取 ${response.data.length} 支股票數據`);
 
-    // 確保每個結果都有originalSymbol屬性，如果後端沒提供
+    // 確保每個結果都有originalSymbol和name屬性
     const results = response.data.map((item, index) => {
       if (!item.originalSymbol) {
         item.originalSymbol = validSymbols[index];
+      }
+      // 確保股票名稱存在
+      if (!item.name) {
+        item.name = item.shortName || item.longName || '未知股票';
       }
       return item;
     });
@@ -237,11 +247,26 @@ export async function getMultipleStockPrices(symbols) {
           errorMessage: err.message || '未知錯誤',
           symbol: normalizeSymbol(symbol),
           originalSymbol: symbol,
+          name: '未知股票',
         };
       }),
     );
 
     return Promise.all(promises);
+  }
+}
+
+// 新增：根據股票代碼獲取股票名稱
+export async function getStockName(symbol) {
+  try {
+    // 重用已有的獲取股票數據函數
+    const stockData = await getStockPrice(symbol);
+    return (
+      stockData.name || stockData.shortName || stockData.longName || '未知股票'
+    );
+  } catch (error) {
+    console.error(`獲取股票 ${symbol} 名稱失敗:`, error);
+    return null;
   }
 }
 
