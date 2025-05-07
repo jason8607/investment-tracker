@@ -5,6 +5,8 @@
 ![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/jason8607/investment-tracker/deploy.yml?branch=main&label=自動部署)
 ![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-已部署-success)
 
+<!-- 修正部署問題 -->
+
 ## 功能特點
 
 - 🔄 即時股價追蹤（台股、美股）
