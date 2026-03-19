@@ -112,7 +112,10 @@ import {
 import dayjs from 'dayjs';
 import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import { Bar, Line, Pie } from 'vue-chartjs';
-import { useStorage } from '../utils/storage';
+import {
+  PORTFOLIO_DATA_CHANGED_EVENT,
+  useStorage,
+} from '../utils/storage';
 
 // 註冊 ChartJS 組件
 ChartJS.register(
@@ -524,12 +527,28 @@ onMounted(() => {
       }
     };
 
+    const handlePortfolioDataChanged = () => {
+      console.log('收到匯入事件，重新載入圖表數據');
+      dataReady.value = false;
+      setTimeout(() => {
+        loadData();
+      }, 50);
+    };
+
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener(
+      PORTFOLIO_DATA_CHANGED_EVENT,
+      handlePortfolioDataChanged,
+    );
 
     // 確保組件銷毀時移除事件監聽
     onUnmounted(() => {
       console.log('移除儲存變化事件監聽器');
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener(
+        PORTFOLIO_DATA_CHANGED_EVENT,
+        handlePortfolioDataChanged,
+      );
     });
   } catch (error) {
     console.error('圖表分析頁面初始化失敗:', error);

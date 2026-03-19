@@ -1,5 +1,10 @@
 const STOCKS_KEY = 'investment-tracker-stocks';
 const REALIZED_KEY = 'investment-tracker-realized';
+export const PORTFOLIO_DATA_CHANGED_EVENT = 'portfolio-data-changed';
+
+export const notifyPortfolioDataChanged = () => {
+  window.dispatchEvent(new CustomEvent(PORTFOLIO_DATA_CHANGED_EVENT));
+};
 
 export function useStorage() {
   // 獲取持股資料

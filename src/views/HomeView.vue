@@ -193,19 +193,49 @@
         <table class="table">
           <thead>
             <tr>
-              <th>代碼</th>
+              <th>
+                <button
+                  @click="toggleSort('symbol')"
+                  class="flex items-center gap-1 text-left font-semibold"
+                >
+                  代碼
+                  <span class="text-xs text-gray-500">{{
+                    getSortIndicator('symbol')
+                  }}</span>
+                </button>
+              </th>
               <th>名稱</th>
               <th>市場</th>
-              <th>持有股數</th>
+              <th>
+                <button
+                  @click="toggleSort('quantity')"
+                  class="flex items-center gap-1 text-left font-semibold"
+                >
+                  持有股數
+                  <span class="text-xs text-gray-500">{{
+                    getSortIndicator('quantity')
+                  }}</span>
+                </button>
+              </th>
               <th>成本價</th>
               <th>目前價格</th>
               <th>市值</th>
-              <th>損益</th>
+              <th>
+                <button
+                  @click="toggleSort('profitRate')"
+                  class="flex items-center gap-1 text-left font-semibold"
+                >
+                  損益率
+                  <span class="text-xs text-gray-500">{{
+                    getSortIndicator('profitRate')
+                  }}</span>
+                </button>
+              </th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(stock, index) in filteredStocks" :key="index">
+            <tr v-for="stock in filteredStocks" :key="getStockKey(stock)">
               <td>{{ stock.symbol }}</td>
               <td>{{ stock.name }}</td>
               <td>{{ stock.market }}</td>
@@ -362,7 +392,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import {
   formatPrice,
   formatUSPrice,
@@ -372,13 +402,17 @@ import {
   convertUSDToTWD,
   getStockName,
 } from '../utils/stockApi';
-import { useStorage } from '../utils/storage';
+import {
+  PORTFOLIO_DATA_CHANGED_EVENT,
+  useStorage,
+} from '../utils/storage';
 import MarketPieChart from '../components/MarketPieChart.vue';
 import MarketBarChart from '../components/MarketBarChart.vue';
 
 // 使用儲存工具
 const {
   getStocks,
+  setStocks,
   addStock,
   updateStock,
   deleteStock: removeStock,
@@ -393,6 +427,8 @@ const showDeleteConfirm = ref(null);
 const loading = ref(false);
 const exchangeRate = ref(30); // 預設匯率約30新台幣兌1美元
 const activeTab = ref('all'); // 'all', 'tw', 'us'
+const sortField = ref(null);
+const sortDirection = ref('asc');
 
 // 持股表單
 const stockForm = reactive({
@@ -427,20 +463,27 @@ const fetchStockName = async () => {
 
 // 根據當前標籤過濾股票
 const filteredStocks = computed(() => {
+  let filtered = stocks.value;
+
   if (activeTab.value === 'all') {
-    return stocks.value;
+    filtered = stocks.value;
   } else if (activeTab.value === 'tw') {
-    return stocks.value.filter((stock) => {
+    filtered = stocks.value.filter((stock) => {
       const currency = getStockCurrency(stock);
       return currency === 'TWD';
     });
   } else if (activeTab.value === 'us') {
-    return stocks.value.filter((stock) => {
+    filtered = stocks.value.filter((stock) => {
       const currency = getStockCurrency(stock);
       return currency === 'USD';
     });
   }
-  return stocks.value;
+
+  if (!sortField.value) {
+    return filtered;
+  }
+
+  return [...filtered].sort((a, b) => compareStocks(a, b));
 });
 
 // 計算屬性 - 依照不同市場
@@ -524,19 +567,102 @@ const marketDistribution = computed(() => {
 
 // 獲取股票在原始陣列中的索引
 const getStockIndex = (stock) => {
-  return stocks.value.findIndex((s) => s.symbol === stock.symbol);
+  return stocks.value.findIndex((s) => s.id === stock.id);
+};
+
+const getStockKey = (stock) => stock.id;
+
+const generateStockId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `stock-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+};
+
+const toggleSort = (field) => {
+  if (sortField.value === field) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+    return;
+  }
+
+  sortField.value = field;
+  sortDirection.value = field === 'symbol' ? 'asc' : 'desc';
+};
+
+const getSortIndicator = (field) => {
+  if (sortField.value !== field) {
+    return '↕';
+  }
+
+  return sortDirection.value === 'asc' ? '↑' : '↓';
+};
+
+const compareStocks = (a, b) => {
+  const direction = sortDirection.value === 'asc' ? 1 : -1;
+
+  switch (sortField.value) {
+    case 'symbol':
+      return (
+        a.symbol.localeCompare(b.symbol, 'zh-Hant', {
+          numeric: true,
+          sensitivity: 'base',
+        }) * direction
+      );
+    case 'quantity':
+      return (a.quantity - b.quantity) * direction;
+    case 'profitRate':
+      return compareNullableNumbers(
+        getStockProfitRate(a),
+        getStockProfitRate(b),
+        direction,
+      );
+    default:
+      return 0;
+  }
+};
+
+const compareNullableNumbers = (a, b, direction) => {
+  const left = Number.isFinite(a);
+  const right = Number.isFinite(b);
+
+  if (!left && !right) return 0;
+  if (!left) return direction;
+  if (!right) return -direction;
+
+  return (a - b) * direction;
 };
 
 // 方法
 const loadStocks = () => {
   try {
     console.log('載入持股數據...');
-    stocks.value = getStocks() || [];
+    const storedStocks = getStocks() || [];
+    let hasUpdatedLegacyStocks = false;
+
+    stocks.value = storedStocks.map((stock) => {
+      if (stock.id) return stock;
+
+      hasUpdatedLegacyStocks = true;
+      return {
+        ...stock,
+        id: generateStockId(),
+      };
+    });
+
+    if (hasUpdatedLegacyStocks) {
+      setStocks(stocks.value);
+    }
+
     refreshPrices(false); // 不顯示加載提示
   } catch (error) {
     console.error('載入持股數據失敗', error);
     stocks.value = [];
   }
+};
+
+const handlePortfolioDataChanged = () => {
+  loadStocks();
 };
 
 const refreshPrices = async (showLoading = true) => {
@@ -627,6 +753,7 @@ const deleteStock = () => {
 
 const saveStock = () => {
   const newStock = {
+    id: editIndex.value !== null ? stocks.value[editIndex.value].id : generateStockId(),
     symbol: stockForm.symbol,
     name: stockForm.name,
     market: stockForm.market,
@@ -793,6 +920,19 @@ const getIndividualStockProfit = (stock) => {
   )} (${sign}${profitPercentage.toFixed(2)}%)`;
 };
 
+const getStockProfitRate = (stock) => {
+  if (!stock) return null;
+
+  const price = getStockPrice(stock);
+  if (!price) return null;
+
+  const cost = stock.cost * stock.quantity;
+  if (!cost) return null;
+
+  const value = price * stock.quantity;
+  return ((value - cost) / cost) * 100;
+};
+
 // 獲取股票損益樣式
 const getStockProfitClass = (stock, currentPrice) => {
   if (!stock || !currentPrice) return '';
@@ -816,6 +956,11 @@ const formatCostPrice = (cost, currency) => {
 // 頁面載入時
 onMounted(async () => {
   try {
+    window.addEventListener(
+      PORTFOLIO_DATA_CHANGED_EVENT,
+      handlePortfolioDataChanged,
+    );
+
     // 先嘗試從localStorage讀取匯率
     const cachedRate = localStorage.getItem('exchange-rate-cache');
     if (cachedRate) {
@@ -840,5 +985,12 @@ onMounted(async () => {
   } catch (error) {
     console.error('頁面初始化時發生錯誤', error);
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener(
+    PORTFOLIO_DATA_CHANGED_EVENT,
+    handlePortfolioDataChanged,
+  );
 });
 </script>

@@ -116,7 +116,7 @@
     </div>
 
     <!-- 標籤切換和按鈕 -->
-    <div class="flex justify-between items-center mb-4">
+    <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-3">
       <div class="tabs">
         <button
           @click="activeTab = 'all'"
@@ -140,9 +140,23 @@
           美股
         </button>
       </div>
-      <button @click="showAddForm = true" class="btn btn-primary">
-        + 新增已實現收益
-      </button>
+      <div class="flex flex-wrap items-center gap-2 md:justify-end">
+        <button
+          @click="toggleSortOption"
+          class="btn bg-gray-100 text-gray-700"
+        >
+          排序：{{ currentSortLabel }}
+        </button>
+        <button
+          @click="toggleSortDirection"
+          class="btn bg-gray-100 text-gray-700"
+        >
+          順序：{{ currentSortDirectionLabel }}
+        </button>
+        <button @click="showAddForm = true" class="btn btn-primary">
+          + 新增已實現收益
+        </button>
+      </div>
     </div>
 
     <!-- 已實現收益列表 -->
@@ -174,7 +188,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(trade, index) in filteredTrades" :key="index">
+            <tr v-for="trade in filteredTrades" :key="getTradeKey(trade)">
               <td>{{ formatDate(trade.date) }}</td>
               <td>{{ trade.symbol }}</td>
               <td>{{ trade.name }}</td>
@@ -351,8 +365,11 @@
 
 <script setup>
 import dayjs from 'dayjs';
-import { computed, onActivated, onMounted, reactive, ref } from 'vue';
-import { useStorage } from '../utils/storage';
+import { computed, onActivated, onMounted, onUnmounted, reactive, ref } from 'vue';
+import {
+  PORTFOLIO_DATA_CHANGED_EVENT,
+  useStorage,
+} from '../utils/storage';
 import MarketPieChart from '../components/MarketPieChart.vue';
 import MarketBarChart from '../components/MarketBarChart.vue';
 import {
@@ -385,6 +402,7 @@ ChartJS.register(
 // 使用儲存工具
 const {
   getRealizedTrades,
+  setRealizedTrades,
   addRealizedTrade,
   updateRealizedTrade,
   deleteRealizedTrade,
@@ -396,6 +414,8 @@ const showAddForm = ref(false);
 const editIndex = ref(null);
 const showDeleteConfirm = ref(null);
 const activeTab = ref('all'); // 'all', 'tw', 'us'
+const sortOption = ref('date');
+const sortDirection = ref('desc');
 const updateCounter = ref(0); // 用於強制重新渲染圖表的計數器
 const isInitialMount = ref(true); // 標記是否為初次掛載
 
@@ -430,6 +450,27 @@ const averageROI = computed(() => {
     0,
   );
   return (totalProfit / totalCost) * 100;
+});
+
+const sortLabels = {
+  date: '日期',
+  roi: '損益率',
+  symbol: '代碼',
+  quantity: '股數',
+};
+
+const sortDirectionLabels = {
+  asc: '升冪',
+  desc: '降冪',
+};
+
+const currentSortLabel = computed(() => sortLabels[sortOption.value]);
+const currentSortDirectionLabel = computed(() => {
+  if (sortOption.value === 'date') {
+    return sortDirection.value === 'asc' ? '舊到新' : '新到舊';
+  }
+
+  return sortDirectionLabels[sortDirection.value];
 });
 
 // 新增：過濾後的交易數據
@@ -499,26 +540,81 @@ const marketDistribution = computed(() => {
 });
 
 const sortedTrades = computed(() => {
-  return [...trades.value].sort((a, b) => new Date(b.date) - new Date(a.date));
+  return [...trades.value].sort((a, b) => {
+    const direction = sortDirection.value === 'asc' ? 1 : -1;
+
+    switch (sortOption.value) {
+      case 'roi':
+        return (getTradeROIValue(a) - getTradeROIValue(b)) * direction;
+      case 'symbol':
+        return (
+          a.symbol.localeCompare(b.symbol, 'zh-Hant', {
+            numeric: true,
+            sensitivity: 'base',
+          }) * direction
+        );
+      case 'quantity':
+        return (a.quantity - b.quantity) * direction;
+      case 'date':
+      default:
+        return (new Date(a.date) - new Date(b.date)) * direction;
+    }
+  });
 });
 
 // 方法
 const loadTrades = () => {
-  trades.value = getRealizedTrades();
+  const storedTrades = getRealizedTrades();
+  let hasUpdatedLegacyTrades = false;
+
+  trades.value = storedTrades.map((trade) => {
+    if (trade.id) return trade;
+
+    hasUpdatedLegacyTrades = true;
+    return {
+      ...trade,
+      id: generateTradeId(),
+    };
+  });
+
+  if (hasUpdatedLegacyTrades) {
+    setRealizedTrades(trades.value);
+  }
 
   // 增加計數器強制重新渲染圖表
   updateCounter.value++;
   console.log('載入交易數據後更新圖表計數器:', updateCounter.value);
 };
 
+const handlePortfolioDataChanged = () => {
+  loadTrades();
+};
+
 // 獲取交易在陣列中的索引
 const getTradeIndex = (trade) => {
-  return trades.value.findIndex(
-    (t) =>
-      t.symbol === trade.symbol &&
-      t.date === trade.date &&
-      t.profit === trade.profit,
-  );
+  return trades.value.findIndex((t) => t.id === trade.id);
+};
+
+const getTradeKey = (trade) => {
+  return trade.id;
+};
+
+const generateTradeId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `trade-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+};
+
+const toggleSortOption = () => {
+  const options = ['date', 'roi', 'symbol', 'quantity'];
+  const currentIndex = options.indexOf(sortOption.value);
+  sortOption.value = options[(currentIndex + 1) % options.length];
+};
+
+const toggleSortDirection = () => {
+  sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
 };
 
 const editTrade = (index) => {
@@ -557,6 +653,7 @@ const saveTrade = () => {
   const profit = sellValue - totalCost;
 
   const newTrade = {
+    id: editIndex.value !== null ? trades.value[editIndex.value].id : generateTradeId(),
     symbol: tradeForm.symbol,
     name: tradeForm.name,
     market: tradeForm.market,
@@ -625,11 +722,14 @@ const formatDate = (dateString) => {
 
 // 計算報酬率
 const calculateROI = (trade) => {
-  if (trade.cost === 0) return '0.00%';
-
-  const roi = (trade.profit / trade.cost) * 100;
+  const roi = getTradeROIValue(trade);
   const sign = roi >= 0 ? '+' : '';
   return `${sign}${roi.toFixed(2)}%`;
+};
+
+const getTradeROIValue = (trade) => {
+  if (trade.cost === 0) return 0;
+  return (trade.profit / trade.cost) * 100;
 };
 
 // 計算總成本
@@ -679,7 +779,18 @@ const fetchStockName = async () => {
 
 // 頁面載入時
 onMounted(() => {
+  window.addEventListener(
+    PORTFOLIO_DATA_CHANGED_EVENT,
+    handlePortfolioDataChanged,
+  );
   loadTrades();
+});
+
+onUnmounted(() => {
+  window.removeEventListener(
+    PORTFOLIO_DATA_CHANGED_EVENT,
+    handlePortfolioDataChanged,
+  );
 });
 
 // 當組件激活時

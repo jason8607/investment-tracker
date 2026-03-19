@@ -48,6 +48,17 @@
     </nav>
 
     <main class="container mx-auto p-4">
+      <div
+        v-if="importMessage"
+        class="mb-4 rounded-lg px-4 py-3 text-sm"
+        :class="
+          importMessageType === 'success'
+            ? 'border border-green-200 bg-green-50 text-green-700'
+            : 'border border-red-200 bg-red-50 text-red-700'
+        "
+      >
+        {{ importMessage }}
+      </div>
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <keep-alive>
@@ -64,8 +75,9 @@
 </template>
 
 <script setup>
+import { ref } from 'vue';
 import * as XLSX from 'xlsx';
-import { useStorage } from './utils/storage';
+import { notifyPortfolioDataChanged, useStorage } from './utils/storage';
 
 const { getStocks, getRealizedTrades, setStocks, setRealizedTrades } =
   useStorage();
@@ -75,6 +87,23 @@ const navItems = [
   { name: '已實現收益', path: '/realized' },
   { name: '圖表分析', path: '/charts' },
 ];
+const importMessage = ref('');
+const importMessageType = ref('success');
+let importMessageTimer = null;
+
+const showImportMessage = (message, type = 'success') => {
+  importMessage.value = message;
+  importMessageType.value = type;
+
+  if (importMessageTimer) {
+    clearTimeout(importMessageTimer);
+  }
+
+  importMessageTimer = window.setTimeout(() => {
+    importMessage.value = '';
+    importMessageTimer = null;
+  }, 3000);
+};
 
 // 匯出 Excel 檔案
 const exportData = () => {
@@ -124,45 +153,55 @@ const importData = (event) => {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    const data = new Uint8Array(e.target.result);
-    const wb = XLSX.read(data, { type: 'array' });
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
 
-    // 讀取持股工作表
-    const stocksSheet = wb.Sheets['持股紀錄'];
-    if (stocksSheet) {
-      const stocksData = XLSX.utils.sheet_to_json(stocksSheet);
-      const stocks = stocksData.map((row) => ({
-        symbol: row['股票代碼'],
-        name: row['股票名稱'],
-        market: row['市場'],
-        cost: parseFloat(row['成本價']),
-        quantity: parseInt(row['數量']),
-        purchaseDate: row['購買日期'],
-      }));
-      setStocks(stocks);
+      // 讀取持股工作表
+      const stocksSheet = wb.Sheets['持股紀錄'];
+      if (stocksSheet) {
+        const stocksData = XLSX.utils.sheet_to_json(stocksSheet);
+        const stocks = stocksData.map((row) => ({
+          symbol: row['股票代碼'],
+          name: row['股票名稱'],
+          market: row['市場'],
+          cost: parseFloat(row['成本價']),
+          quantity: parseInt(row['數量']),
+          purchaseDate: row['購買日期'],
+        }));
+        setStocks(stocks);
+      }
+
+      // 讀取已實現收益工作表
+      const realizedSheet = wb.Sheets['已實現收益'];
+      if (realizedSheet) {
+        const realizedData = XLSX.utils.sheet_to_json(realizedSheet);
+        const realized = realizedData.map((row) => ({
+          symbol: row['股票代碼'],
+          name: row['股票名稱'],
+          sellPrice: parseFloat(row['賣出價格']),
+          quantity: parseInt(row['數量']),
+          cost: parseFloat(row['成本']),
+          profit: parseFloat(row['實現損益']),
+          date: row['日期'],
+        }));
+        setRealizedTrades(realized);
+      }
+
+      notifyPortfolioDataChanged();
+      showImportMessage('資料匯入成功，畫面已更新。', 'success');
+    } catch (error) {
+      console.error('資料匯入失敗:', error);
+      showImportMessage('資料匯入失敗，請確認檔案格式是否正確。', 'error');
+    } finally {
+      // 重置檔案選擇
+      event.target.value = '';
     }
+  };
 
-    // 讀取已實現收益工作表
-    const realizedSheet = wb.Sheets['已實現收益'];
-    if (realizedSheet) {
-      const realizedData = XLSX.utils.sheet_to_json(realizedSheet);
-      const realized = realizedData.map((row) => ({
-        symbol: row['股票代碼'],
-        name: row['股票名稱'],
-        sellPrice: parseFloat(row['賣出價格']),
-        quantity: parseInt(row['數量']),
-        cost: parseFloat(row['成本']),
-        profit: parseFloat(row['實現損益']),
-        date: row['日期'],
-      }));
-      setRealizedTrades(realized);
-    }
-
-    // 重置檔案選擇
+  reader.onerror = () => {
+    showImportMessage('讀取檔案失敗，請重新選擇檔案。', 'error');
     event.target.value = '';
-
-    // 顯示成功訊息
-    alert('資料匯入成功！');
   };
 
   reader.readAsArrayBuffer(file);
